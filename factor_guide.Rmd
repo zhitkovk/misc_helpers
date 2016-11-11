@@ -1,0 +1,271 @@
+---
+title: "Dummy and categorial variables guide"
+author: Konstantin Zhitkov
+output: html_document
+---
+
+
+
+## Basic settings
+
+Stuff that makes document prettier:
+
+
+```{r, icnlude = FALSE}
+knitr::opts_chunk$set(warning = FALSE)  # suppress warnings in output
+knitr::opts_chunk$set(message = FALSE)  # suppress messages in output
+```
+
+
+```{r}
+library("ggplot2")  # for plots
+```
+
+
+## Easiest way to create a dummy/indicator variable
+
+
+Load data to create examples:
+
+
+```{r}
+data <- mtcars
+```
+
+
+#### Categorial variable
+
+
+```{r}
+dummy1 <- ifelse(mtcars$hp > 90, "category1", "category2")
+table(dummy1)
+```
+
+
+#### Simple indicator
+
+
+```{r}
+dummy2 <- ifelse(mtcars$hp > 90, 1, 0)
+table(dummy2)
+```
+
+
+#### Factor function
+
+
+Dummy and categorical variables are usually presented through the factor function. Levels are automatically assigned to unique categories:
+
+
+```{r}
+fact1 <- factor(c(1, 1, 2))
+fact2 <- factor(c("one", "one", "two"))
+
+fact1
+
+fact2
+```
+
+
+Level values are assigned to labels vector:
+
+
+```{r}
+fact <- factor(c(1, 1, 2), labels = c("foo", "bar"))
+
+fact
+```
+
+
+Levels are set, but the vector contains only NA. Levels override initial values:
+
+
+```{r}
+fact <- factor(c(1, 1, 2), levels = c("foo", "bar"))
+
+fact
+```
+
+
+Though you can use levels like this (not labels!):
+
+
+```{r}
+fact1 <- factor(c(1, 1, 2), levels = c("1", "2"))
+fact2 <- factor(c(1, 1, 2), levels = c("1", "2", "3"))
+```
+
+
+You duplicate R's automatic creation of levels in 1st case:
+
+
+```{r}
+fact1
+```
+
+
+In the second case one level contains no observations:
+
+
+```{r}
+fact2
+```
+
+
+Renaming levels, initial levels: 1, 2. Check them through `levels(factor_variable)`:
+
+
+```{r}
+fact <- factor(c(1, 1, 2)) 
+levels(fact) <- c("one", "two")
+
+fact
+```
+
+
+Often after subsetting data you lose observations with particular factor levels. This is how to get rid of unused levels:
+
+
+Create factor:
+
+
+```{r}
+fact <- factor(c(1, 1, 2))
+```
+
+
+Remove one observation:
+
+
+```{r}
+fact <- fact[1:2]
+```
+
+
+Now we get one __unused__ level. Let's remove it:
+
+
+```{r}
+fact <- droplevels(fact)
+fact
+```
+
+
+When running a regression you often want to have a particular basic (reference) category:
+
+
+```{r}
+fact <- factor(c(1, 1, 2))
+fact <- relevel(fact, ref = "2")
+```
+
+
+Now "2" appears in the beginning:
+
+
+```{r}
+fact
+```
+
+
+#### Combining sparse levels into one category (e.g. "other")
+
+
+```{r}
+otherLevel <- function(factor, levels.frequency, category.name) {
+  # Gathers all factor levels into one category under suggested name
+  #
+  # Args:
+  #  factor: factor vector
+  #  levels.frequency: minimal number of cases to preserve original levels
+  #  category.name: new name for combined category consisting of rare leves
+  #
+  # Returns:
+  #  Factor vector with new levels
+  levels(factor)[table(factor) < levels.frequency] <- as.character(category.name)
+  return(factor)
+}
+```
+
+
+#### Example
+
+Create initial factor with sparse levels:
+
+
+```{r}
+fact <- factor(c(rep("c", 100), rep("g", 2), rep("j", 4), rep("v", 10)))
+table(fact) # initial state
+```
+
+
+Rare levels are now combined into "other" category:
+
+
+```{r}
+table(otherLevel(fact, 5, "other"))
+```
+
+
+#### Barplot example
+
+
+When you have many levels (e.g. > 15), then you could get into trouble when plotting data: your plots will be ugly and x labels will overlap (you can have long level names instead of "a"). To avoid scale labels manipulations you can reduce number of sparse levels. However do not forget to analyze them separately. 
+
+
+Create artificial data with sparse levels:
+
+
+```{r}
+d <- data.frame(v1 = seq(1:100),
+                v2 = factor(c(rep("a", 40),
+                              rep("b", 20),
+                              rep("c", 20),
+                              rep("d", 6), 
+                              rep("e", 5),
+                              rep("f", 3),
+                              rep("g", 3),
+                              rep("h", 2),
+                              rep("i", 1))))
+```
+
+
+Check it: v2 is factor with 9 levels:
+
+
+```{r}
+str(d)
+```
+
+
+Bar plot of v2 before transformation of levels:
+
+
+```{r}
+before_base <- ggplot(data = d, aes(x = v2))
+before <- before_base +
+  geom_bar() +
+  theme_bw()
+before
+```
+
+
+Transform v2: combine sparse levels into 1 named "other". Now v2 is factor with 5 levels:
+
+
+```{r}
+d$v2 <- otherLevel(d$v2, 6, "other")
+str(d)
+```
+
+
+Bar plot of v2 after transformation of levels:
+
+
+```{r}
+after_base <- ggplot(data = d, aes(x = v2))
+after <- after_base +
+  geom_bar() +
+  theme_bw()
+after
+```

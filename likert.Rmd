@@ -1,0 +1,197 @@
+---
+title: "Likert Plots"
+output: html_document
+---
+
+
+## Basic settings
+
+
+Stuff that makes document prettier:
+
+
+```{r, icnlude = FALSE}
+knitr::opts_chunk$set(warning = FALSE)  # suppress warnings in output
+knitr::opts_chunk$set(message = FALSE)  # suppress messages in output
+```
+
+
+```{r libraries}
+library("ggplot2")  # for plots
+library("dplyr")  # for data manipulation
+library("lazyeval")  # for standard evaluation inside the functions
+library("data.table")  # another popular solution for data manipulation
+```
+
+
+## What's Likert scale?
+
+
+Probably everyone has seen survey questions asking you whether you completely agree or completely disagee with something. So, these are questions with Likert scale. Check [wiki](https://en.wikipedia.org/wiki/Likert_scale) for additional information.
+
+
+Such data is often visualized through stacked bar charts with prelimnary scaling. By the way, usage of such plots is not limited to Likert scale questions and can be applied to any appropriate categorical data.
+
+
+## Load data
+
+
+We will use Hair and Eye Color of Statistics Students dataset from `datasets` package. 
+
+
+```{r}
+d <- data.frame(HairEyeColor)
+```
+
+
+The dataset contains three categorical variables - hair color, eye color, sex, and one numeric - calculated frequencies for each combination of categorical features
+
+
+```{r}
+str(d)
+```
+
+
+## Basic plot
+
+
+Start with a basic plot: distribution of eye colors among genders. Frequencies are already supplied, so mind usage `stat = identity` and y variable in `aes`. 
+
+
+```{r}
+eye_gender <- ggplot(data = d, aes(x = Sex, y = Freq, fill = Eye)) +
+  geom_bar(stat = "identity", position = position_fill()) +
+  theme_bw()
+
+eye_gender
+```
+
+
+## Upgrading to geom text
+
+
+From previous plot you can basically conclude that, for example, green eye color is less frequent than blue one. What is 'less frequent': do they differ by 5 or 7 percent? 
+
+
+__To be more precise you'd better add text labels on bars__.
+
+
+### Prepare data
+
+
+The thing is there is no preset option like "place frequencies somewhere inside the bars". That is why we have to manually prepare the data. The idea of `cumsum` usage comes from this question on [stackoverflow](http://stackoverflow.com/questions/6644997/showing-data-values-on-stacked-bar-chart-in-ggplot2).
+
+
+Here is a function to prepare the data. Mind changed `stat` option in `geom_bar`. Start with the case when the frequencies are already available.
+
+
+#### Frequencies are available to you
+
+
+Current function relies heavily on `dplyr` and `lazyeval` packages. First one is used for data manipulation. The second one implements standard evaluation inside the function (`interp` function). Besides this it uses small helper function `freq` which calcualtes relative frequencies for the vector.
+
+
+Relative frequency counter function:
+
+
+```{r}
+freq <- function(vect) {
+  # Calculates relative frequencies based on the supplied vector
+  # 
+  # Args:
+  #  vect: vector to calcualte relative frequencies
+  #
+  # Returns:
+  #  Relative frequencies of a given vector
+  vect <- vect/sum(vect, na.rm = TRUE)
+  return(vect)
+}
+```
+
+
+Data preparation itself:
+
+
+```{r}
+fillData_f <- function(data, grouper, init_freq_count) {
+  # Function counts relative frequencies based on supplied grouping and 
+  # initial count variables and provides position variable 
+  # for adding them to bar chart in form of text labels.
+  # 
+  # Args:
+  #  data: your table with data
+  #  grouper: variable you group your dataset by (x axis variable)
+  #  init_freq_count: NON relative frequencies available to you
+  #
+  # Returns:
+  #  Dataframe with counted relative group frequencies and 
+  #  position variable for plotting them in form of text labels
+  dots <- interp(~ freq(variable), variable = as.name(init_freq_count))
+  data <- data %>%
+    group_by_(grouper) %>%
+    mutate_(.dots = setNames(list(dots), c("freqs"))) %>%
+    mutate(position = cumsum(freqs) - 0.5 * freqs)
+  return(data)
+}
+```
+
+
+### Updated plot (data with given frequencies)
+
+
+Prepare the data with `fillData_f`:
+
+
+```{r}
+d <- d[,2:4]
+d_f <- fillData_f(d, grouper = "Sex", init_freq_count = "Freq")
+
+sum(d_f$freqs)
+```
+
+
+Plot itself:
+
+
+```{r}
+eye_gender_f <- ggplot(data = d_f, aes(x = Sex, y = freqs, fill = Eye)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = position, label = freqs)) +
+  theme_bw()
+
+eye_gender_f
+```
+
+
+#### Frequencies are unknown beforehand
+
+
+```{r}
+fillData <- function(data, ...) {
+  # Function counts relative frequencies based on supplied grouping variables
+  # and provides position variable for adding them to bar chart in form of text
+  # labels
+  # 
+  # Args:
+  #  data: your table with data
+  #  ...: variables you group your dataset by (x axis and fill variables)
+  #       You need 2: one for x axis and one for bar filling
+  #
+  # Returns:
+  #  Dataframe with counted relative group frequencies and 
+  #  position variable for plotting them in form of text labels
+  data <- data %>%
+    group_by_(...) %>%
+    summarise(count = n()) %>%
+    mutate(freqs = freq(count),
+           position = cumsum(freqs) - 0.5 * freqs)
+  return(data)
+}
+```
+
+
+### Updated plot (unknown frequencies)
+
+
+### Plot function
+
